@@ -231,14 +231,23 @@ def render_analysis(tk: str, where: str) -> None:
             fig.add_hline(y=v["mos_price"], line_dash="dot", line_color="#1a7f37",
                           annotation_text=f"MOS price {v['mos_price']:,.2f}",
                           annotation_position="top left", row=1, col=1)
-        if v["sticker"]:
-            fig.add_hline(y=v["sticker"], line_dash="dash", line_color="#8250df",
-                          annotation_text=f"Sticker price {v['sticker']:,.2f}",
+        # Price range plus the MOS line (always shown).
+        lo = min([h["Low"].min(), *([v["mos_price"]] if v["mos_price"] else [])])
+        hi = max([h["High"].max(), *([v["mos_price"]] if v["mos_price"] else [])])
+        sticker = v["sticker"]
+        # The sticker line is only drawn when it fits without squashing the price chart:
+        # it may at most double the visible range. Otherwise its value is shown as a note.
+        if sticker and (hi - lo) and max(hi, sticker) - min(lo, sticker) <= 2 * (hi - lo):
+            fig.add_hline(y=sticker, line_dash="dash", line_color="#8250df",
+                          annotation_text=f"Sticker price {sticker:,.2f}",
                           annotation_position="bottom left", row=1, col=1)
-        # Make sure both lines are inside the visible range, even when far from the price.
-        levels = [x for x in (v["mos_price"], v["sticker"]) if x]
-        lo = min([h["Low"].min(), *levels])
-        hi = max([h["High"].max(), *levels])
+            lo, hi = min(lo, sticker), max(hi, sticker)
+        elif sticker:
+            where_txt = "above" if sticker > hi else "below"
+            fig.add_annotation(text=f"Sticker price {sticker:,.2f} ({where_txt} the chart)",
+                               xref="x domain", yref="y domain", x=0.99, y=0.98 if sticker > hi else 0.02,
+                               xanchor="right", yanchor="top" if sticker > hi else "bottom",
+                               showarrow=False, font=dict(color="#8250df"), row=1, col=1)
         pad = (hi - lo) * 0.10
         fig.update_yaxes(range=[lo - pad, hi + pad], row=1, col=1)
         fig.add_trace(go.Bar(x=h.index, y=mc["hist"], name="MACD hist",
