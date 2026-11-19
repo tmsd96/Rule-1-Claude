@@ -122,43 +122,14 @@ c2.metric("Match your filters", len(view))
 c3.metric("On sale", int(view["on_sale"].sum()))
 c4.metric("With red-flag news", int((view["news_flag"] == "high").sum()))
 
-tab_list, tab_detail, tab_help = st.tabs(["Screener", "Stock analysis", "How it works"])
-
-with tab_list:
-    st.dataframe(
-        view[["ticker", "name", "sector", "region", "currency", "price", "mos_price", "sticker", "above_mos",
-              "score_pct", "years_of_data", "payback_years", "debt_val", "tools_txt", "news_txt"]],
-        hide_index=True, use_container_width=True, height=620,
-        column_config={
-            "ticker": "Ticker", "name": "Company", "sector": "Sector", "region": "Market",
-            "currency": "Ccy",
-            "price": st.column_config.NumberColumn("Price", format="%.2f"),
-            "mos_price": st.column_config.NumberColumn("MOS price", format="%.2f",
-                                                       help="Rule #1 buy price"),
-            "sticker": st.column_config.NumberColumn("Sticker", format="%.2f"),
-            "above_mos": st.column_config.NumberColumn("Above MOS", format="percent",
-                                                       help="How far the price is above the MOS price. "
-                                                            "Zero or negative = on sale."),
-            "score_pct": st.column_config.ProgressColumn("Big 5", format="%.0f%%", min_value=0, max_value=100),
-            "years_of_data": st.column_config.NumberColumn("Years", help="Years of financial history used"),
-            "payback_years": st.column_config.NumberColumn("Payback (y)", help="Target ≤ 8"),
-            "debt_val": st.column_config.NumberColumn("Debt (y FCF)", format="%.1f", help="Target ≤ 3"),
-            "tools_txt": st.column_config.TextColumn("Tools", help="MACD · Stochastics · 10-day MA"),
-            "news_txt": st.column_config.TextColumn("News"),
-        },
-    )
-    st.caption("Tools: 🟢 buy · 🔴 sell (MACD 8/17/9, Stochastics 14/5, 10-day moving average). "
-               "European stocks have ~4 years of history (free data limit); US stocks use 10+ years from SEC filings.")
-
-# ---------------------------------------------------------------- detail
-with tab_detail:
-    options = view["ticker"].tolist() or df["ticker"].tolist()
-    labels = dict(zip(df["ticker"], df["name"]))
-    tk = st.selectbox("Stock", options, format_func=lambda t: f"{t} — {labels.get(t, '')}")
+# ---------------------------------------------------------------- analysis (shared)
+def render_analysis(tk: str, where: str) -> None:
+    """Full Rule #1 analysis of one stock. `where` keeps widget keys unique, because the
+    same analysis can be shown in the Screener tab and in the Stock analysis tab."""
     row = next(r for r in rows if r["ticker"] == tk)
     g_auto = engine.choose_growth(row.get("hist_growth"), row.get("analyst_growth"), cap)
     g_pick = st.slider("Growth rate for the projection", 0.0, 30.0, round((g_auto or 0) * 100, 1), 0.5,
-                       format="%.1f%%",
+                       format="%.1f%%", key=f"growth_{where}_{tk}",
                        help="Default = lower of historical equity growth and analyst estimate, capped.") / 100
     v = value_row(row, {**settings, "growth_override": g_pick or None})
     ccy = row.get("currency") or ""
@@ -192,12 +163,15 @@ with tab_detail:
             line["Pass"] = {True: "✅", False: "❌", None: "–"}[m.get("passed")]
             tbl.append(line)
         tdf = pd.DataFrame(tbl).set_index("Metric")
-        tdf[[c for c in tdf.columns if c != "Pass"]] = tdf[[c for c in tdf.columns if c != "Pass"]].astype(float)
         num_cols = [c for c in tdf.columns if c != "Pass"]
-        st.dataframe(tdf.style.format("{:.1%}", subset=num_cols, na_rep="n/a")
-                     .map(lambda x: "" if not isinstance(x, float) or math.isnan(x) else
-                          ("color:#1a7f37" if x >= 0.10 else "color:#cf222e"), subset=num_cols),
-                     use_container_width=True)
+        nums = tdf[num_cols].astype(float)
+        # Show text (so missing values read "n/a", not "None") and colour from the numbers.
+        shown = tdf.copy()
+        shown[num_cols] = nums.map(lambda x: "n/a" if math.isnan(x) else f"{x:.1%}")
+        colours = nums.map(lambda x: "" if math.isnan(x) else
+                           ("color:#1a7f37" if x >= 0.10 else "color:#cf222e"))
+        st.dataframe(shown.style.apply(lambda _: colours, axis=None, subset=num_cols),
+                     use_container_width=True, key=f"big5_{where}")
         st.caption(f"Source: {row.get('source') or 'n/a'}. Each number should be ≥ 10%.")
 
         st.subheader("Margin of safety: sticker price")
@@ -263,13 +237,64 @@ with tab_detail:
         fig.add_trace(go.Scatter(x=h.index, y=so["k"], name="%K", line=dict(color="#2f6fde")), 3, 1)
         fig.add_trace(go.Scatter(x=h.index, y=so["d"], name="%D", line=dict(color="#e39b17")), 3, 1)
         fig.update_layout(height=620, showlegend=False, margin=dict(l=10, r=10, t=30, b=10))
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True, key=f"chart_{where}")
         t = row.get("tools") or {}
         st.caption(f"MACD {TOOL_ICON.get(t.get('macd'), '')} · Stochastics {TOOL_ICON.get(t.get('stochastic'), '')} · "
                    f"10-day MA {TOOL_ICON.get(t.get('ma10'), '')}. Phil Town buys when all three are green "
                    "and the price is below the MOS price.")
     else:
         st.caption("No chart data for this stock.")
+
+
+tab_list, tab_detail, tab_help = st.tabs(["Screener", "Stock analysis", "How it works"])
+
+with tab_list:
+    table = view.reset_index(drop=True)
+    event = st.dataframe(
+        table[["ticker", "name", "sector", "region", "currency", "price", "mos_price", "sticker", "above_mos",
+              "score_pct", "years_of_data", "payback_years", "debt_val", "tools_txt", "news_txt"]],
+        hide_index=True, use_container_width=True, height=520,
+        on_select="rerun", selection_mode="single-row", key="screener_table",
+        column_config={
+            "ticker": "Ticker", "name": "Company", "sector": "Sector", "region": "Market",
+            "currency": "Ccy",
+            "price": st.column_config.NumberColumn("Price", format="%.2f"),
+            "mos_price": st.column_config.NumberColumn("MOS price", format="%.2f",
+                                                       help="Rule #1 buy price"),
+            "sticker": st.column_config.NumberColumn("Sticker", format="%.2f"),
+            "above_mos": st.column_config.NumberColumn("Above MOS", format="percent",
+                                                       help="How far the price is above the MOS price. "
+                                                            "Zero or negative = on sale."),
+            "score_pct": st.column_config.ProgressColumn("Big 5", format="%.0f%%", min_value=0, max_value=100),
+            "years_of_data": st.column_config.NumberColumn("Years", help="Years of financial history used"),
+            "payback_years": st.column_config.NumberColumn("Payback (y)", help="Target ≤ 8"),
+            "debt_val": st.column_config.NumberColumn("Debt (y FCF)", format="%.1f", help="Target ≤ 3"),
+            "tools_txt": st.column_config.TextColumn("Tools", help="MACD · Stochastics · 10-day MA"),
+            "news_txt": st.column_config.TextColumn("News"),
+        },
+    )
+    st.caption("Tools: 🟢 buy · 🔴 sell (MACD 8/17/9, Stochastics 14/5, 10-day moving average). "
+               "European stocks have ~4 years of history (free data limit); US stocks use 10+ years from SEC filings.")
+
+    selected = event.selection.rows if event else []
+    if selected:
+        tk_sel = table.iloc[selected[0]]["ticker"]
+        st.session_state["picked"] = tk_sel  # also pre-selects it in the Stock analysis tab
+        st.divider()
+        st.header(f"{tk_sel} — {table.iloc[selected[0]]['name']}")
+        render_analysis(tk_sel, "screener")
+    else:
+        st.info("Tick the box at the left of a row to analyse that stock here.")
+
+# ---------------------------------------------------------------- detail tab
+with tab_detail:
+    options = view["ticker"].tolist() or df["ticker"].tolist()
+    labels = dict(zip(df["ticker"], df["name"]))
+    picked = st.session_state.get("picked")
+    start_at = options.index(picked) if picked in options else 0
+    tk_detail = st.selectbox("Stock", options, index=start_at,
+                             format_func=lambda t: f"{t} — {labels.get(t, '')}")
+    render_analysis(tk_detail, "tab")
 
 with tab_help:
     st.markdown("""
