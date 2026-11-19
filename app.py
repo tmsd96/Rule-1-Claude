@@ -222,14 +222,25 @@ def render_analysis(tk: str, where: str) -> None:
                          index=pd.to_datetime(ch["date"]))
         mc, so = macd(h["Close"]), stochastic(h["High"], h["Low"], h["Close"])
         fig = make_subplots(rows=3, cols=1, shared_xaxes=True, row_heights=[0.5, 0.25, 0.25],
-                            vertical_spacing=0.04, subplot_titles=("Price & 10-day MA", "MACD (8,17,9)",
+                            vertical_spacing=0.04, subplot_titles=("Price, 10-day MA, MOS & sticker price", "MACD (8,17,9)",
                                                                    "Stochastics (14,5)"))
         fig.add_trace(go.Scatter(x=h.index, y=h["Close"], name="Price", line=dict(color="#2f6fde")), 1, 1)
         fig.add_trace(go.Scatter(x=h.index, y=h["Close"].rolling(10).mean(), name="10-day MA",
                                  line=dict(color="#e39b17")), 1, 1)
         if v["mos_price"]:
             fig.add_hline(y=v["mos_price"], line_dash="dot", line_color="#1a7f37",
-                          annotation_text="MOS price", row=1, col=1)
+                          annotation_text=f"MOS price {v['mos_price']:,.2f}",
+                          annotation_position="top left", row=1, col=1)
+        if v["sticker"]:
+            fig.add_hline(y=v["sticker"], line_dash="dash", line_color="#8250df",
+                          annotation_text=f"Sticker price {v['sticker']:,.2f}",
+                          annotation_position="bottom left", row=1, col=1)
+        # Make sure both lines are inside the visible range, even when far from the price.
+        levels = [x for x in (v["mos_price"], v["sticker"]) if x]
+        lo = min([h["Low"].min(), *levels])
+        hi = max([h["High"].max(), *levels])
+        pad = (hi - lo) * 0.10
+        fig.update_yaxes(range=[lo - pad, hi + pad], row=1, col=1)
         fig.add_trace(go.Bar(x=h.index, y=mc["hist"], name="MACD hist",
                              marker_color=["#1a7f37" if x > 0 else "#cf222e" for x in mc["hist"]]), 2, 1)
         fig.add_trace(go.Scatter(x=h.index, y=mc["macd"], name="MACD", line=dict(color="#2f6fde")), 2, 1)
