@@ -202,3 +202,19 @@ def test_ai_calls_stop_at_the_per_run_limit(monkeypatch):
     calls.clear()
     scanner.refresh_news(rows, cfg, store)
     assert sorted(calls) == sorted(f"T{i}" for i in range(20, 30))
+
+
+def test_sec_403_stops_further_requests(monkeypatch):
+    calls = []
+
+    class Resp:
+        status_code = 403
+
+    monkeypatch.setattr(sec.requests, "get", lambda *a, **k: calls.append(1) or Resp())
+    monkeypatch.setattr(sec, "_blocked", False)
+    monkeypatch.setattr(sec, "_ticker_map", None)
+    with pytest.raises(sec.SECBlocked, match="SEC_USER_AGENT"):
+        sec.cik_for("NVDA")
+    with pytest.raises(sec.SECBlocked):
+        sec.cik_for("AAPL")
+    assert len(calls) == 1  # the second stock did not hit the SEC again

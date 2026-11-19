@@ -60,7 +60,11 @@ def google_news(name: str, ticker: str, lookback_days: int = 14, limit: int = 25
     query = f'"{search_name(name)}" when:{lookback_days}d'
     url = f"https://news.google.com/rss/search?q={quote_plus(query)}&hl=en-US&gl=US&ceid=US:en"
     try:
-        r = requests.get(url, timeout=20, headers={"User-Agent": "Mozilla/5.0 rule1-screener"})
+        for attempt in range(2):
+            r = requests.get(url, timeout=20, headers={"User-Agent": "Mozilla/5.0 rule1-screener"})
+            if r.status_code != 429 or attempt:
+                break
+            time.sleep(20)  # rate limited: wait once, then retry
         r.raise_for_status()
     except Exception as e:
         log.warning("news %s failed: %s", ticker, e)
@@ -85,7 +89,7 @@ def google_news(name: str, ticker: str, lookback_days: int = 14, limit: int = 25
             "severity": severity,
             "category": area,
         })
-    time.sleep(0.5)  # be polite to Google News
+    time.sleep(1.0)  # be polite to Google News
     return items
 
 

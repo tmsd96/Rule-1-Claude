@@ -45,7 +45,7 @@ def profile(t: yf.Ticker) -> dict:
     fin_ccy, _ = normalize_currency(info.get("financialCurrency") or info.get("currency"))
     price = _num(info.get("currentPrice") or info.get("regularMarketPrice"))
     return {
-        "name": info.get("shortName") or info.get("longName"),
+        "name": info.get("longName") or info.get("shortName"),
         "long_name": info.get("longName"),
         "sector": info.get("sector") or "Unknown",
         "industry": info.get("industry") or "Unknown",
@@ -176,13 +176,25 @@ def fx_rate(src: str | None, dst: str | None) -> float:
         return 1.0
     key = (src, dst)
     if key not in _fx_cache:
-        try:
-            h = yf.Ticker(f"{src}{dst}=X").history(period="5d")
-            _fx_cache[key] = float(h["Close"].iloc[-1])
-        except Exception as e:
-            log.warning("FX %s->%s failed (%s); using 1.0", src, dst, e)
-            _fx_cache[key] = 1.0
+        rate = _fx_quote(src, dst)
+        if rate is None:
+            inverse = _fx_quote(dst, src)
+            rate = 1 / inverse if inverse else None
+        if rate is None and "USD" not in (src, dst):
+            rate = fx_rate(src, "USD") * fx_rate("USD", dst)
+        if rate is None:
+            log.warning("FX %s->%s unavailable; using 1.0", src, dst)
+            rate = 1.0
+        _fx_cache[key] = rate
     return _fx_cache[key]
+
+
+def _fx_quote(src: str, dst: str) -> float | None:
+    try:
+        h = yf.Ticker(f"{src}{dst}=X").history(period="5d")
+        return float(h["Close"].iloc[-1]) if not h.empty else None
+    except Exception:
+        return None
 
 
 def daily_history(tickers: list[str], period: str = "9mo") -> dict[str, pd.DataFrame]:

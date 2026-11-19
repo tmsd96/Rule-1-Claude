@@ -63,6 +63,8 @@ def fetch_fundamentals(ticker: str, region: str) -> dict:
         try:
             years = sec.annual_fundamentals(ticker, market.splits(t))
             source = "SEC EDGAR"
+        except sec.SECBlocked as e:
+            log.warning("%s: %s Falling back to Yahoo.", ticker, e)
         except Exception as e:
             log.warning("%s: EDGAR failed (%s), falling back to Yahoo", ticker, e)
     if len(years) < 5:
@@ -84,8 +86,13 @@ def run_fundamentals(cfg: dict, max_age_days: int = 6, limit: int | None = None)
     save_json(DATA_DIR / "universe.json", universe.to_dict(orient="records"))
     store = load_json(FUND_FILE, {})
     fresh_cutoff = (datetime.now(timezone.utc) - timedelta(days=max_age_days)).strftime("%Y-%m-%d")
-    todo = [r for r in universe.to_dict(orient="records")
-            if store.get(r["ticker"], {}).get("updated", "") < fresh_cutoff]
+    def needs_refresh(r: dict) -> bool:
+        rec = store.get(r["ticker"], {})
+        if r["region"] == "US" and rec.get("source") != "SEC EDGAR":
+            return True  # retry SEC (10+ years) for US stocks that only got Yahoo data
+        return rec.get("updated", "") < fresh_cutoff
+
+    todo = [r for r in universe.to_dict(orient="records") if needs_refresh(r)]
     if limit:
         todo = todo[:limit]
     log.info("fundamentals: %d of %d tickers need refresh", len(todo), len(universe))

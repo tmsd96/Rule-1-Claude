@@ -16,13 +16,26 @@ _last_call = 0.0
 _ticker_map: dict[str, int] | None = None
 
 
+class SECBlocked(RuntimeError):
+    """The SEC refused access (HTTP 403), almost always a missing or placeholder User-Agent."""
+
+
+_blocked = False
+
+
 def _get(url: str) -> dict:
-    global _last_call
+    global _last_call, _blocked
+    if _blocked:
+        raise SECBlocked("SEC access refused earlier in this run")
     wait = 0.15 - (time.time() - _last_call)
     if wait > 0:
         time.sleep(wait)
     _last_call = time.time()
     r = requests.get(url, headers=UA, timeout=30)
+    if r.status_code == 403:
+        _blocked = True
+        raise SECBlocked("SEC refused access (403). Set the SEC_USER_AGENT secret to "
+                         "'Your Name your@email.com' (a real contact address).")
     r.raise_for_status()
     return r.json()
 
