@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import logging
 import sys
 import time
@@ -183,7 +184,8 @@ def refresh_news(rows: list[dict], cfg: dict, store: dict) -> dict:
     ncfg = cfg["news"]
     lookback = ncfg["lookback_days"]
     min_score = ncfg.get("min_big5_score", 0.6)
-    use_ai = ncfg.get("ai_summaries", False)
+    # Without an API key there are no AI calls, so none count against the budget.
+    use_ai = ncfg.get("ai_summaries", False) and bool(os.environ.get("ANTHROPIC_API_KEY"))
     ai_budget = int(ncfg.get("ai_max_calls_per_run", 20))
     ai_calls = 0
     for row in rows:

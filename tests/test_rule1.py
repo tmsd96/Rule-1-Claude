@@ -189,6 +189,7 @@ def test_ai_calls_stop_at_the_per_run_limit(monkeypatch):
     from rule1 import scanner
     headline = [{"title": "CEO resigns", "severity": "high", "category": "management",
                  "link": "x", "published": "2026-11-18", "source": "X"}]
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
     monkeypatch.setattr(news, "google_news", lambda *a, **k: list(headline))
     calls = []
     monkeypatch.setattr(news, "summarize_flags",
