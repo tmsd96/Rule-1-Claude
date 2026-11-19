@@ -16,7 +16,7 @@ per use (see step 4).
 ## How it works
 
 ```
-GitHub Actions, every day at 17:00 UTC              Streamlit Community Cloud
+GitHub Actions, every day at 17:15 UTC              Streamlit Community Cloud
  ├─ financials of stocks older than 6 days            app.py reads the JSON files
  │  (SEC EDGAR for US, Yahoo for the rest)            from the repo's `data` branch
  └─ prices, tools, news ──► results pushed to the `data` branch
@@ -51,7 +51,7 @@ In the repo: **Settings → Secrets and variables → Actions → New repository
 
 ### 3. Run the first scan
 **Actions → Rule 1 scan → Run workflow.** The first run takes about 2 hours (it downloads
-financials for every stock). After that it runs by itself every day at 17:00 UTC; each stock's
+financials for every stock). After that it runs by itself every day at 17:15 UTC; each stock's
 financials are refreshed about once a week, so daily runs are short except on that day.
 
 ### 4. (Optional) AI news summaries

@@ -343,7 +343,7 @@ with tab_help:
 - **Google News** – headlines, tagged for red flags; optionally summarised by Claude.
 
 ### Updates
-Everything runs once a day at 17:00 UTC: prices, tools and news every day, financials for each stock
+Everything runs once a day at 17:15 UTC: prices, tools and news every day, financials for each stock
 once a week. Email alerts go out
 when a strong-moat stock goes on sale, gets an all-green buy signal, or has new high-severity news.
 """)
