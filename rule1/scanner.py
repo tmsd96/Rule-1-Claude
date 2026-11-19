@@ -56,6 +56,9 @@ def save_json(path, data) -> None:
 def fetch_fundamentals(ticker: str, region: str) -> dict:
     t = yf.Ticker(ticker)
     prof = market.profile(t)
+    if not prof["currency"] and not prof["name"]:
+        # Yahoo sometimes refuses the profile request (401/429). Keep the previous record.
+        raise RuntimeError("Yahoo profile unavailable (rate limited or unknown ticker)")
     rec = {**prof, "ticker": ticker, "region": region, "updated": now_iso()}
     years: list[engine.Year] = []
     source = None
@@ -96,6 +99,7 @@ def run_fundamentals(cfg: dict, max_age_days: int = 6, limit: int | None = None)
     if limit:
         todo = todo[:limit]
     log.info("fundamentals: %d of %d tickers need refresh", len(todo), len(universe))
+    failures_in_a_row = 0
     for n, r in enumerate(todo, 1):
         tk = r["ticker"]
         try:
@@ -104,14 +108,23 @@ def run_fundamentals(cfg: dict, max_age_days: int = 6, limit: int | None = None)
             rec["country"] = rec.get("country") or r["country"]
             store[tk] = rec
             log.info("[%d/%d] %s ok (%d years, %s)", n, len(todo), tk, len(rec["years"]), rec["source"])
+            failures_in_a_row = 0
         except Exception as e:
             log.warning("[%d/%d] %s failed: %s", n, len(todo), tk, e)
-            time.sleep(2)
+            failures_in_a_row += 1
+            if failures_in_a_row >= 40:
+                log.error("40 failures in a row: Yahoo is probably blocking us. Stopping; "
+                          "the next run continues where this one stopped.")
+                break
+            time.sleep(120 if failures_in_a_row % 10 == 0 else 2)  # pause longer every 10 failures
         if n % 25 == 0:
             save_json(FUND_FILE, store)  # checkpoint: a timed-out job resumes next run
     if not limit:  # full run: drop stocks that left every index
         keep = set(universe["ticker"])
-        store = {k: v for k, v in store.items() if k in keep}
+        # Only for indices that loaded this time: a Wikipedia hiccup must not wipe out an index.
+        loaded = {k for keys in universe["index"] for k in keys.split(",")}
+        store = {k: v for k, v in store.items()
+                 if k in keep or not set(str(v.get("index", "")).split(",")) & loaded}
     save_json(FUND_FILE, store)
 
 
@@ -246,7 +259,8 @@ def run_prices(cfg: dict, with_news: bool = True, send_alerts: bool = True) -> N
 
 def run_one(ticker: str, cfg: dict) -> None:
     from .valuation import settings_from_config, value_row
-    region = "US" if "." not in ticker else "Europe"
+    emerging = (".HK", ".SS", ".SZ", ".TW", ".KS", ".NS", ".SA")
+    region = "US" if "." not in ticker else ("Emerging markets" if ticker.endswith(emerging) else "Europe")
     rec = fetch_fundamentals(ticker, region)
     hist = market.daily_history([ticker]).get(ticker)
     row = build_row(rec, hist, cfg["rule1"]["min_growth"])

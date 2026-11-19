@@ -13,7 +13,9 @@ rule1:
 
 universe:
   # Index lists are read from Wikipedia. Remove any you do not want to scan.
-  indices: [sp500, stoxx50, ftse100, dax, cac40, aex, ibex, psi, smi, omx, ftsemib]
+  indices: [sp500, sp400, sp600,                                          # US
+            stoxx50, ftse100, ftse250, dax, cac40, aex, ibex, psi, smi, omx, ftsemib,  # Europe
+            hangseng, csi300, taiwan, kospi200, nifty50, brazil]            # emerging markets
 
 news:
   lookback_days: 14
@@ -28,7 +30,7 @@ alerts:
   # Email alerts sent by the scheduled scan (see README for the Gmail setup).
   enabled: true
   sectors: []               # empty = all sectors
-  regions: [US, Europe]
+  regions: [US, Europe, Emerging markets]
   min_big5_score: 0.8       # only alert on stocks with a strong moat (80%+ of Big 5 checks)
   on_sale: true             # price fell to/below the margin-of-safety price
   red_flags: true           # new high-severity news on a stock that passes the Big 5

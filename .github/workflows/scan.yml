@@ -2,15 +2,8 @@ name: Rule 1 scan
 
 on:
   schedule:
-    - cron: "23 3 * * 0"          # Sunday 03:23 UTC: refresh 10-year financials for every stock
-    - cron: "17 7-21/2 * * 1-5"   # Weekdays every 2 h, 07:17-21:17 UTC (EU + US hours): prices, news, alerts
+    - cron: "0 17 * * *"   # every day at 17:00 UTC (GitHub may start it a few minutes late)
   workflow_dispatch:
-    inputs:
-      mode:
-        description: "What to run"
-        type: choice
-        options: [prices, fundamentals]
-        default: prices
 
 permissions:
   contents: write   # to publish results to the `data` branch
@@ -22,7 +15,7 @@ concurrency:
 jobs:
   scan:
     runs-on: ubuntu-latest
-    timeout-minutes: 300
+    timeout-minutes: 340
     steps:
       - uses: actions/checkout@v5
 
@@ -41,8 +34,9 @@ jobs:
           fi
           ls -la data
 
-      - name: Refresh fundamentals (weekly, or when missing)
-        if: github.event.schedule == '23 3 * * 0' || inputs.mode == 'fundamentals' || hashFiles('data/fundamentals.json') == ''
+      # Financials: only stocks not refreshed in the last 6 days (and new ones), so each stock is
+      # updated about once a week. Stops early if Yahoo blocks requests; the next run continues.
+      - name: Refresh fundamentals (stale or new stocks only)
         env:
           SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
         run: python -m rule1.scanner fundamentals

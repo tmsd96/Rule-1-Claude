@@ -48,7 +48,8 @@ news_store = load("news", {})
 charts = load("prices", {})
 
 st.title("📈 Rule #1 Screener")
-st.caption("Phil Town's 4 Ms (Meaning, Moat, Management, Margin of safety) applied to US and European stocks. "
+st.caption("Phil Town's 4 Ms (Meaning, Moat, Management, Margin of safety) applied to US, European and "
+           "emerging-market stocks. "
            "Educational tool, not investment advice.")
 
 if not rows:
@@ -60,7 +61,10 @@ if not rows:
 r1 = CFG["rule1"]
 with st.sidebar:
     st.header("Filters")
-    regions = st.multiselect("Market", ["US", "Europe"], default=["US", "Europe"])
+    regions_all = [r for r in ("US", "Europe", "Emerging markets") if any(x["region"] == r for x in rows)]
+    regions = st.multiselect("Market", regions_all, default=regions_all)
+    countries_all = sorted({x.get("country") or "Other" for x in rows if x["region"] in regions})
+    countries = st.multiselect("Country", countries_all, placeholder="All countries")
     sectors_all = sorted({r["sector"] for r in rows})
     sectors = st.multiselect("Sector", sectors_all, placeholder="All sectors")
     min_score = st.slider("Minimum Big 5 score", 0, 100, 80, 5, format="%d%%",
@@ -87,6 +91,8 @@ df = pd.DataFrame(records)
 view = df[df["region"].isin(regions) & (df["big5_score"] >= min_score)]
 if sectors:
     view = view[view["sector"].isin(sectors)]
+if countries:
+    view = view[view["country"].fillna("Other").isin(countries)]
 if only_sale:
     view = view[view["on_sale"]]
 if hide_flags:
@@ -128,7 +134,7 @@ def render_analysis(tk: str, where: str) -> None:
     same analysis can be shown in the Screener tab and in the Stock analysis tab."""
     row = next(r for r in rows if r["ticker"] == tk)
     g_auto = engine.choose_growth(row.get("hist_growth"), row.get("analyst_growth"), cap)
-    g_pick = st.slider("Growth rate for the projection", 0.0, 30.0, round((g_auto or 0) * 100, 1), 0.5,
+    g_pick = st.slider("Growth rate for the projection", 0.0, 30.0, float(round((g_auto or 0) * 100, 1)), 0.5,
                        format="%.1f%%", key=f"growth_{where}_{tk}",
                        help="Default = lower of historical equity growth and analyst estimate, capped.") / 100
     v = value_row(row, {**settings, "growth_override": g_pick or None})
@@ -294,7 +300,8 @@ with tab_list:
         },
     )
     st.caption("Tools: 🟢 buy · 🔴 sell (MACD 8/17/9, Stochastics 14/5, 10-day moving average). "
-               "European stocks have ~4 years of history (free data limit); US stocks use 10+ years from SEC filings.")
+               "Non-US stocks have ~4 years of history (free data limit); US stocks use 10+ years from SEC filings. "
+               "Prices are in each stock's own currency.")
 
     selected = event.selection.rows if event else []
     if selected:
@@ -330,10 +337,13 @@ with tab_help:
 ### Data sources (all free)
 - **SEC EDGAR** – 10+ years of audited US financials and 8-K event filings.
 - **Yahoo Finance** – prices, European financials (≈ 4 years), analyst growth estimates, currencies.
-- **Wikipedia** – index members (S&P 500, EURO STOXX 50, FTSE 100, DAX, CAC 40, AEX, IBEX 35, PSI, SMI, OMX 30, FTSE MIB).
+- **Wikipedia** – index members: US (S&P 500, 400, 600), Europe (EURO STOXX 50, FTSE 100 and 250, DAX,
+  CAC 40, AEX, IBEX 35, PSI, SMI, OMX 30, FTSE MIB) and emerging markets (Hang Seng, CSI 300, KOSPI 200,
+  NIFTY 50, B3 Brazil). Taiwan uses a fixed list of its ~60 largest companies.
 - **Google News** – headlines, tagged for red flags; optionally summarised by Claude.
 
 ### Updates
-Financials refresh weekly; prices, tools and news several times each weekday. Email alerts go out
+Everything runs once a day at 17:00 UTC: prices, tools and news every day, financials for each stock
+once a week. Email alerts go out
 when a strong-moat stock goes on sale, gets an all-green buy signal, or has new high-severity news.
 """)

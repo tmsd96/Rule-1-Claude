@@ -218,3 +218,19 @@ def test_sec_403_stops_further_requests(monkeypatch):
     with pytest.raises(sec.SECBlocked):
         sec.cik_for("AAPL")
     assert len(calls) == 1  # the second stock did not hit the SEC again
+
+
+def test_clean_ticker_emerging_markets():
+    assert _clean_ticker("SEHK:\xa05", ".HK", "Emerging markets") == "0005.HK"
+    assert _clean_ticker("SSE: 600519", "", "Emerging markets") == "600519.SS"
+    assert _clean_ticker("SZSE: 858", "", "Emerging markets") == "000858.SZ"
+    assert _clean_ticker("5930", ".KS", "Emerging markets") == "005930.KS"
+    assert _clean_ticker("EMBJ3", ".SA", "Emerging markets") == "EMBJ3.SA"
+    assert _clean_ticker("BAJAJ-AUTO", ".NS", "Emerging markets") == "BAJAJ-AUTO.NS"
+
+
+def test_fundamentals_keeps_old_record_when_yahoo_profile_is_empty(monkeypatch):
+    from rule1 import scanner
+    monkeypatch.setattr(market, "profile", lambda t: {"name": None, "currency": None})
+    with pytest.raises(RuntimeError, match="profile unavailable"):
+        scanner.fetch_fundamentals("2330.TW", "Emerging markets")
