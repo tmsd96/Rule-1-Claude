@@ -164,6 +164,8 @@ def refresh_news(rows: list[dict], cfg: dict, store: dict) -> dict:
     lookback = ncfg["lookback_days"]
     min_score = ncfg.get("min_big5_score", 0.6)
     use_ai = ncfg.get("ai_summaries", False)
+    ai_budget = int(ncfg.get("ai_max_calls_per_run", 20))
+    ai_calls = 0
     for row in rows:
         if row["big5_score"] < min_score:
             continue
@@ -178,13 +180,16 @@ def refresh_news(rows: list[dict], cfg: dict, store: dict) -> dict:
         flagged = [i for i in items if i["severity"] in ("high", "medium")]
         entry = {"items": items, "updated": now_iso(), "ai": prev.get("ai"), "ai_hash": prev.get("ai_hash")}
         digest = hashlib.sha1("|".join(sorted(i["title"] for i in flagged)).encode()).hexdigest()
-        if use_ai and flagged and digest != prev.get("ai_hash"):
+        if use_ai and flagged and digest != prev.get("ai_hash") and ai_calls < ai_budget:
+            ai_calls += 1  # counts attempts, including failed ones
             ai = news.summarize_flags(row["name"], tk, flagged, ncfg["ai_model"])
             if ai:
                 entry["ai"], entry["ai_hash"] = ai, digest
         if not flagged:
             entry["ai"], entry["ai_hash"] = None, None
         store[tk] = entry
+    if use_ai:
+        log.info("AI summaries: %d of %d allowed calls used", ai_calls, ai_budget)
     return store
 
 

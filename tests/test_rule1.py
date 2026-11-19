@@ -183,3 +183,22 @@ def test_smooth_ttm_removes_one_off_quarter_only():
     # NVIDIA: fast but steady growth is left alone
     eps, adj = market.smooth_ttm([2.70, 2.00, 1.80, 1.30])
     assert not adj and eps == pytest.approx(7.80)
+
+
+def test_ai_calls_stop_at_the_per_run_limit(monkeypatch):
+    from rule1 import scanner
+    headline = [{"title": "CEO resigns", "severity": "high", "category": "management",
+                 "link": "x", "published": "2026-11-18", "source": "X"}]
+    monkeypatch.setattr(news, "google_news", lambda *a, **k: list(headline))
+    calls = []
+    monkeypatch.setattr(news, "summarize_flags",
+                        lambda name, tk, items, model: calls.append(tk) or {"risk": "high"})
+    rows = [{"ticker": f"T{i}", "name": f"Co {i}", "region": "Europe", "big5_score": 1.0} for i in range(30)]
+    cfg = {"news": {"lookback_days": 14, "min_big5_score": 0.6, "ai_summaries": True,
+                    "ai_model": "claude-haiku-5-5", "ai_max_calls_per_run": 20}}
+    store = scanner.refresh_news(rows, cfg, {})
+    assert len(calls) == 20
+    # Next run: the 20 done stocks are cached, so the remaining 10 get their turn.
+    calls.clear()
+    scanner.refresh_news(rows, cfg, store)
+    assert sorted(calls) == sorted(f"T{i}" for i in range(20, 30))

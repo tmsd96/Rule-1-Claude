@@ -56,8 +56,10 @@ on weekdays.
 ### 4. (Optional) AI news summaries
 With `ANTHROPIC_API_KEY` set, stocks with flagged headlines get a short Rule #1 risk read
 (management / moat impact) from Claude. It only runs when a stock's flagged headlines change.
-The model is set in `config.yaml` (`news.ai_model`); `claude-haiku-5-5` costs far less than the
-default. Without the key, keyword flags still work.
+It uses `claude-haiku-5-5`, the cheapest model, and makes at most 20 calls per scan
+(`news.ai_model` and `news.ai_max_calls_per_run` in `config.yaml`). Stocks over the limit get
+their summary on the next scan. For a hard spending ceiling, use prepaid credits with auto-reload
+off in the Anthropic Console. Without the key, keyword flags still work.
 
 ### 5. Publish the dashboard
 1. Sign in at <https://share.streamlit.io> with GitHub → **Create app** → pick this repo, branch
