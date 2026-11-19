@@ -1,0 +1,70 @@
+name: Rule 1 scan
+
+on:
+  schedule:
+    - cron: "23 3 * * 0"          # Sunday 03:23 UTC: refresh 10-year financials for every stock
+    - cron: "17 7-21/2 * * 1-5"   # Weekdays every 2 h, 07:17-21:17 UTC (EU + US hours): prices, news, alerts
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "What to run"
+        type: choice
+        options: [prices, fundamentals]
+        default: prices
+
+permissions:
+  contents: write   # to publish results to the `data` branch
+
+concurrency:
+  group: rule1-scan
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: Restore the previous scan from the data branch
+        run: |
+          mkdir -p data
+          if git fetch --depth=1 origin data 2>/dev/null; then
+            git archive FETCH_HEAD | tar -x -C data
+          fi
+          ls -la data
+
+      - name: Refresh fundamentals (weekly, or when missing)
+        if: github.event.schedule == '23 3 * * 0' || inputs.mode == 'fundamentals' || hashFiles('data/fundamentals.json') == ''
+        env:
+          SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
+        run: python -m rule1.scanner fundamentals
+
+      - name: Prices, timing tools, news and email alerts
+        env:
+          SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          ALERT_EMAIL_TO: ${{ secrets.ALERT_EMAIL_TO }}
+          DASHBOARD_URL: ${{ vars.DASHBOARD_URL }}
+        run: python -m rule1.scanner prices
+
+      - name: Publish results to the data branch
+        if: always() && hashFiles('data/results.json') != ''
+        run: |
+          cd data
+          rm -rf .git
+          git init -q -b data
+          git config user.name "rule1-scan-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -qm "Scan $(date -u +%Y-%m-%dT%H:%MZ)"
+          git push -qf "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" data

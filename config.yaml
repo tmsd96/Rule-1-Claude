@@ -1,0 +1,34 @@
+# Rule #1 screener settings. Every value here can also be changed live in the dashboard,
+# except the alert settings, which the scheduled scanner uses.
+
+rule1:
+  min_growth: 0.10          # Big 5: each growth rate / ROIC must be >= 10%
+  marr: 0.15                # Minimum acceptable rate of return (Phil Town: 15%)
+  margin_of_safety: 0.50    # Buy at 50% of the sticker price
+  growth_cap: 0.15          # Never project more than 15% growth for 10 years
+  pe_cap: 50                # Never use a future P/E above this
+  max_payback_years: 8      # Payback time target
+  max_debt_payoff_years: 3  # Debt should be payable with <= 3 years of free cash flow
+  projection_years: 10
+
+universe:
+  # Index lists are read from Wikipedia. Remove any you do not want to scan.
+  indices: [sp500, stoxx50, ftse100, dax, cac40, aex, ibex, psi, smi, omx, ftsemib]
+
+news:
+  lookback_days: 14
+  min_big5_score: 0.6       # only fetch news for stocks with at least this Big 5 score
+  # AI summaries of red-flag news. Only runs when the ANTHROPIC_API_KEY secret is set,
+  # and only for stocks with flagged headlines (to keep cost low).
+  ai_summaries: true
+  ai_model: claude-opus-5-5   # claude-haiku-5-5 is ~40x cheaper if you want to save
+
+alerts:
+  # Email alerts sent by the scheduled scan (see README for the Gmail setup).
+  enabled: true
+  sectors: []               # empty = all sectors
+  regions: [US, Europe]
+  min_big5_score: 0.8       # only alert on stocks with a strong moat (80%+ of Big 5 checks)
+  on_sale: true             # price fell to/below the margin-of-safety price
+  red_flags: true           # new high-severity news on a stock that passes the Big 5
+  buy_signals: true         # all three of Phil Town's tools turned green on an on-sale stock

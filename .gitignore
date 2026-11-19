@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+# Scan output is published to the separate `data` branch by the GitHub Action.
+data/*
+!data/.gitkeep
+.streamlit/secrets.toml
